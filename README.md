@@ -7,11 +7,21 @@
 
 ## 解答テンプレート
 
-`template/main.rs` は `cargo compete new` が生成する各解答ファイル（`a.rs` など）の雛形の「正」です。
-今は `fn main()` のみ。ここに好みの `use`・入出力ヘルパー・マクロなどを育てていきます。
+`examples/template.rs` は `cargo compete new` が生成する各解答ファイル（`a.rs` など）の雛形の「正」です。
+ここに好みの `use`・入出力ヘルパー・マクロなどを育てていきます。
+
+example として置いているため、AtCoder と同じ環境でコンパイルチェックできます:
+
+```bash
+cargo build --examples   # rust-toolchain.toml により rustc 1.70.0 で検証
+```
+
+`[dev-dependencies]` に AtCoder 2023-01 環境の crate セットを持たせているので、テンプレートが
+proconio などを使ってもチェックが通ります（dev-dependencies は cplib を使う側には伝播しません）。
 
 コンテスト用ワークスペース側では、この内容を `compete.toml` の `[template] src` にインラインで
-ミラーして使います（cargo-compete は現行スキーマでは外部ファイル参照に非対応のため）。
+ミラーして使います（cargo-compete は現行スキーマでは外部ファイル参照に非対応のため）。ミラーは
+ワークスペース側の `sync-template.py` で自動化しています。
 
 ## 使い方
 
