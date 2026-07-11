@@ -1,0 +1,50 @@
+snippet rust_out
+    use std::fmt::Display;
+    use std::io::{self, BufWriter, StdoutLock, Write};
+    /// stdout を束ねた高速出力バッファ。drop 時に自動 flush される。
+    pub struct RustOut {
+        w: BufWriter<StdoutLock<'static>>,
+    }
+    impl RustOut {
+        pub fn new() -> Self {
+            Self {
+                w: BufWriter::new(io::stdout().lock()),
+            }
+        }
+        /// 値を 1 つ書く（`Display` があれば何でも）。
+        pub fn put<T: Display>(&mut self, x: T) -> &mut Self {
+            let _ = write!(self.w, "{}", x);
+            self
+        }
+        /// 空白を書く。
+        pub fn sp(&mut self) -> &mut Self {
+            let _ = self.w.write_all(b" ");
+            self
+        }
+        /// 改行を書く。
+        pub fn nl(&mut self) -> &mut Self {
+            let _ = self.w.write_all(b"\n");
+            self
+        }
+        /// イテレータ（スライス等）を `sep` 区切りで書く。
+        pub fn put_iter<T: Display, I: IntoIterator<Item = T>>(
+            &mut self,
+            iter: I,
+            sep: &str,
+        ) -> &mut Self {
+            let mut first = true;
+            for x in iter {
+                if !first {
+                    let _ = self.w.write_all(sep.as_bytes());
+                }
+                let _ = write!(self.w, "{}", x);
+                first = false;
+            }
+            self
+        }
+        /// 明示的に flush する（通常は drop 時に自動 flush されるので不要）。
+        pub fn flush(&mut self) {
+            let _ = self.w.flush();
+        }
+    }
+

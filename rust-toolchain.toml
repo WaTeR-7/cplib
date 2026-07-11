@@ -1,4 +1,4 @@
 [toolchain]
-# AtCoder 2023-01 環境と同じ rustc。examples/ の解答テンプレートを本番と同じ
+# AtCoder 2025-10 環境と同じ rustc。examples/ の解答テンプレートを本番と同じ
 # バージョンでコンパイルチェックするために固定する。
-channel = "1.70.0"
+channel = "1.89.0"
