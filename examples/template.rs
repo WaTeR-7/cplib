@@ -7,8 +7,6 @@ use std::io::{self, BufWriter, StdoutLock, Write};
 
 fn main() {
     let mut rout = RustOut::new();
-
-    todo! {}
 }
 
 /// stdout を `BufWriter` で 1 つに束ねた高速出力バッファ。
