@@ -9,45 +9,48 @@ fn main() {
     let mut rout = RustOut::new();
 }
 
-/// stdout を `BufWriter` で 1 つに束ねた高速出力バッファ。
+/// stdout を `BufWriter` で1つに束ねた高速出力バッファ。
 ///
-/// `put`/`sp`/`nl`/`put_iter`/`put_prec`/`flush` をチェインして書ける。`println!`
-/// の「毎回ロック＋行バッファ flush」を避けるのが主目的で、これだけで大量出力の
-/// TLE はほぼ解消する。整数は手書き itoa（`fmt` を経由せず桁を直接バッファへ
-/// 書く）で出力するので、itoa クレート相当の速度が外部依存なしで出る。
-/// 小数は既定で `{:.12}` の固定小数点（1e-6 許容問題向け。`Display` の
-/// 「`1.0`→`1`」罠を回避）。桁数を変えたいときは `put_prec(x, n)`。
-/// drop 時に自動 flush される。
+/// `put`/`sp`/`nl`/`put_iter`/`put_prec`/`yesno`/`flush` をチェインして出力できる。
+/// `println!` の「毎回ロック＋行バッファ flush」を避け、大量出力の TLE を解消する。
+///
+/// - 整数: `fmt` を経由しない手書き itoa（桁を直接バッファへ書く）。
+/// - 小数: 既定で `{:.12}` の固定小数点。桁数を変えたいときは `put_prec(x, n)`。
+/// - 文字列: `str`/`String` は UTF-8 バイト列をそのまま出力する。
+/// - 文字: `char` は UTF-8 へエンコードしてバイト列を出力する。
+/// - イテレータ: `put_iter` でスライス等を `sep` 区切りで出力できる。
+/// - drop 時に自動 flush される。
 struct RustOut {
     writer: BufWriter<StdoutLock<'static>>,
 }
 
 impl RustOut {
+    /// stdout をロックし `BufWriter` で包んで生成する。
     fn new() -> Self {
         Self {
             writer: BufWriter::new(io::stdout().lock()),
         }
     }
 
-    /// 値を 1 つ書く。整数はホットパス（手書き itoa）、それ以外は `Display`。
+    /// `RoWrite` を実装した値を1つ出力する。
     fn put<T: RoWrite>(&mut self, x: T) -> &mut Self {
         x.ro_write(&mut self.writer);
         self
     }
 
-    /// 空白を書く。
+    /// 空白を出力する。
     fn sp(&mut self) -> &mut Self {
         let _ = self.writer.write_all(b" ");
         self
     }
 
-    /// 改行を書く。
+    /// 改行を出力する。
     fn nl(&mut self) -> &mut Self {
         let _ = self.writer.write_all(b"\n");
         self
     }
 
-    /// イテレータ（スライス等）を `sep` 区切りで書く。
+    /// イテレータ（スライス等）を `sep` 区切りで出力する。
     fn put_iter<T: RoWrite, I: IntoIterator<Item = T>>(&mut self, iter: I, sep: &str) -> &mut Self {
         let mut first = true;
         for x in iter {
@@ -60,27 +63,27 @@ impl RustOut {
         self
     }
 
-    /// bool を `Yes`/`No` で書く（AtCoder 系の定番出力）。改行は付けない。
+    /// bool を `Yes`/`No` で出力する。改行は付けない。
     fn yesno(&mut self, flag: bool) -> &mut Self {
         let _ = self.writer.write_all(if flag { b"Yes" } else { b"No" });
         self
     }
 
-    /// 小数点以下 `prec` 桁の固定小数点で書く（既定の 12 桁で足りない/多い時に）。
+    /// 小数点以下 `prec` 桁の固定小数点で出力する（`put` の既定は12）。
     fn put_prec<T: Display>(&mut self, x: T, prec: usize) -> &mut Self {
         let _ = write!(self.writer, "{:.*}", prec, x);
         self
     }
 
     /// 明示的に flush する（通常は drop 時に自動 flush されるので不要）。
-    /// ロックは保持したままなので、flush 後もそのまま書き続けられる。
+    /// ロックは保持したままなので、flush 後もそのまま出力し続けられる。
     fn flush(&mut self) -> &mut Self {
         let _ = self.writer.flush();
         self
     }
 }
 
-/// `RustOut` に書ける値。整数は手書き itoa、その他は `Display` 経由。
+/// `RustOut` に出力できる値。整数は手書き itoa、その他は `Display` 経由。
 trait RoWrite {
     fn ro_write<W: Write>(&self, w: &mut W);
 }
@@ -141,14 +144,14 @@ macro_rules! impl_ro_iint {
     )*};
 }
 
-// u64 幅（最大 20 桁）に収まる型。
+// u64 幅（最大20桁）に収まる型。
 impl_ro_uint!(u64, 20, u8, u16, u32, u64, usize);
 impl_ro_iint!(u64, 20, i8, i16, i32, i64, isize);
-// 128bit（最大 39 桁 + 符号）。
+// 128bit（最大39桁 + 符号）。
 impl_ro_uint!(u128, 40, u128);
 impl_ro_iint!(u128, 40, i128);
 
-/// 文字列はバイト列を直接書く。
+/// 文字列はバイト列を直接出力する。
 impl RoWrite for str {
     fn ro_write<W: Write>(&self, w: &mut W) {
         let _ = w.write_all(self.as_bytes());
@@ -166,9 +169,7 @@ impl RoWrite for char {
     }
 }
 
-/// 浮動小数点は既定で小数点以下 12 桁の固定小数点。`Display`(`{}`) の
-/// 「最短往復・`1.0`→`1`・小数点消滅」を避け、1e-6 許容問題で安全側に倒す。
-/// 桁数を変えたいときは `RustOut::put_prec(x, n)` を使う。
+/// 浮動小数点は既定で `{:.12}` の固定小数点。桁数を変えたいときは `put_prec`。
 macro_rules! impl_ro_float {
     ($($t:ty),*) => {$(
         impl RoWrite for $t {
