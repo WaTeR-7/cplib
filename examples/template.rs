@@ -62,6 +62,12 @@ impl RustOut {
         self
     }
 
+    /// bool を `Yes`/`No` で書く（AtCoder 系の定番出力）。改行は付けない。
+    fn yesno(&mut self, flag: bool) -> &mut Self {
+        let _ = self.writer.write_all(if flag { b"Yes" } else { b"No" });
+        self
+    }
+
     /// 小数点以下 `prec` 桁の固定小数点で書く（既定の 12 桁で足りない/多い時に）。
     fn put_prec<T: Display>(&mut self, x: T, prec: usize) -> &mut Self {
         let _ = write!(self.writer, "{:.*}", prec, x);
