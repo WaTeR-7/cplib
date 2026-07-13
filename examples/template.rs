@@ -11,7 +11,7 @@ fn main() {
 
 /// stdout を `BufWriter` で1つに束ねた高速出力バッファ。
 ///
-/// `put`/`sp`/`nl`/`put_iter`/`put_prec`/`yesno`/`flush` をチェインして出力できる。
+/// `put`/`sp`/`nl`/`put_iter`/`put_prec`/`yesno`/`put_if`/`flush` をチェインして出力できる。
 /// `println!` の「毎回ロック＋行バッファ flush」を避け、大量出力の TLE を解消する。
 ///
 /// - 整数: `fmt` を経由しない手書き itoa（桁を直接バッファへ書く）。
@@ -67,6 +67,11 @@ impl RustOut {
     fn yesno(&mut self, flag: bool) -> &mut Self {
         let _ = self.writer.write_all(if flag { b"Yes" } else { b"No" });
         self
+    }
+
+    /// `cond` が真なら `yes`、偽なら `no` を出力する。改行は付けない。
+    fn put_if<T: RoWrite>(&mut self, cond: bool, yes: T, no: T) -> &mut Self {
+        self.put(if cond { yes } else { no })
     }
 
     /// 小数点以下 `prec` 桁の固定小数点で出力する（`put` の既定は12）。
