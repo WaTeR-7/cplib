@@ -1,17 +1,78 @@
-#![allow(unused_imports, dead_code, unused_variables, unused_mut)]
+#![allow(unused_imports, dead_code, unused_variables, unused_mut, unused_macros)]
 
 use proconio::input;
-use std::cmp::{max, min};
+use std::f64::consts::PI;
 use std::fmt::Display;
 use std::io::{self, BufWriter, StdoutLock, Write};
 
-fn main() {
-    let mut rout = RustOut::new();
+/// 32bit の「無限大」定数。`i32::MAX` だと加算でオーバーフローするため余裕を持たせている。
+const INF32: i32 = 1 << 30;
+/// 64bit の「無限大」定数。`i64::MAX` だと加算でオーバーフローするため余裕を持たせている。
+const INF64: i64 = 1 << 60;
+/// 法 998244353（NTT-friendly な素数）。
+const P998: u64 = 998_244_353;
+/// 法 1,000,000,007。
+const P100: u64 = 1_000_000_007;
+
+/// 3値以上の最小値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
+macro_rules! min {
+    ($a:expr $(,)?) => {
+        $a
+    };
+    ($a:expr, $($rest:expr),+ $(,)?) => {{
+        let a = $a;
+        let b = min!($($rest),+);
+        if a < b {
+            a
+        } else {
+            b
+        }
+    }};
 }
+
+/// 3値以上の最大値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
+macro_rules! max {
+    ($a:expr $(,)?) => {
+        $a
+    };
+    ($a:expr, $($rest:expr),+ $(,)?) => {{
+        let a = $a;
+        let b = max!($($rest),+);
+        if a > b {
+            a
+        } else {
+            b
+        }
+    }};
+}
+
+/// `x.chmin(y)` / `x.chmax(y)` で使う chmin/chmax トレイト。
+trait ChminChmax: PartialOrd + Sized {
+    /// `self` が `other` より大きければ `self = other` として更新する。更新有無を bool で返す。
+    fn chmin(&mut self, other: Self) -> bool {
+        if *self > other {
+            *self = other;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// `self` が `other` より小さければ `self = other` として更新する。更新有無を bool で返す。
+    fn chmax(&mut self, other: Self) -> bool {
+        if *self < other {
+            *self = other;
+            true
+        } else {
+            false
+        }
+    }
+}
+impl<T: PartialOrd> ChminChmax for T {}
 
 /// stdout を `BufWriter` で1つに束ねた高速出力バッファ。
 ///
-/// `put`/`sp`/`nl`/`put_iter`/`put_prec`/`yesno`/`put_if`/`flush` をチェインして出力できる。
+/// `put`/`sp`/`nl`/`put_iter`/`put_prec`/`yesno`/`yes`/`no`/`put_if`/`flush` をチェインして出力できる。
 /// `println!` の「毎回ロック＋行バッファ flush」を避け、大量出力の TLE を解消する。
 ///
 /// - 整数: `fmt` を経由しない手書き itoa（桁を直接バッファへ書く）。
@@ -66,6 +127,18 @@ impl RustOut {
     /// bool を `Yes`/`No` で出力する。改行は付けない。
     fn yesno(&mut self, flag: bool) -> &mut Self {
         let _ = self.writer.write_all(if flag { b"Yes" } else { b"No" });
+        self
+    }
+
+    /// `Yes` を出力する。改行は付けない。
+    fn yes(&mut self) -> &mut Self {
+        let _ = self.writer.write_all(b"Yes");
+        self
+    }
+
+    /// `No` を出力する。改行は付けない。
+    fn no(&mut self) -> &mut Self {
+        let _ = self.writer.write_all(b"No");
         self
     }
 
@@ -185,3 +258,7 @@ macro_rules! impl_ro_float {
     )*};
 }
 impl_ro_float!(f32, f64);
+
+fn main() {
+    let mut rout = RustOut::new();
+}
