@@ -768,7 +768,4 @@ use my_template_rust_out::*;
 fn main() {
     let mut rin = RustIn::new();
     let mut rout = RustOut::new();
-    let (n, m) = rin.read(US).read(I32).get();
-    let x = rin.read(I32).get();
-    rout.put(n).sp().put(m).sp().put(x).nl();
 }
