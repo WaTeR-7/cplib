@@ -290,9 +290,13 @@ mod my_template_rust_in {
     pub const STR: String = String::new();
     pub const CHAR: char = ' ';
 
-    /// 標準入力を空白区切りでトークン化して保持し、順に読み出す構造体。
+    /// 標準入力を1つの `String` バッファとして保持し、空白区切りのバイト範囲でトークン化する構造体。
+    ///
+    /// トークンごとに `String` を確保せず `&str` をバッファから借用するだけなので、
+    /// 大量入力でもトークン数に比例したヒープ確保が発生しない。
     pub struct RustIn {
-        tokens: Vec<String>,
+        buffer: String,
+        spans: Vec<(usize, usize)>,
         cursor: usize,
     }
 
@@ -300,7 +304,8 @@ mod my_template_rust_in {
         /// 標準入力を読み込んで `RustIn` を生成する。
         pub fn new() -> Self {
             let mut new = Self {
-                tokens: Vec::new(),
+                buffer: String::new(),
+                spans: Vec::new(),
                 cursor: 0,
             };
             new.load();
@@ -309,10 +314,17 @@ mod my_template_rust_in {
 
         /// 標準入力から追加でトークンを読み込む（複数回の入力に対応するため）。
         pub fn load(&mut self) -> &mut Self {
-            let mut buffer = String::new();
-            io::stdin().read_to_string(&mut buffer).unwrap();
-            let tokens: Vec<String> = buffer.split_whitespace().map(|s| s.to_string()).collect();
-            self.tokens.extend(tokens);
+            let start = self.buffer.len();
+            io::stdin().read_to_string(&mut self.buffer).unwrap();
+            let base_ptr = self.buffer.as_ptr() as usize;
+            let new_spans: Vec<(usize, usize)> = self.buffer[start..]
+                .split_whitespace()
+                .map(|s| {
+                    let start = s.as_ptr() as usize - base_ptr;
+                    (start, start + s.len())
+                })
+                .collect();
+            self.spans.extend(new_spans);
             self
         }
 
@@ -347,11 +359,11 @@ mod my_template_rust_in {
             }
         }
 
-        /// 次のトークンを1つ取り出す。
-        fn next_token(&mut self) -> String {
-            let token = self.tokens[self.cursor].clone();
+        /// 次のトークンを1つ取り出す（コピーせずバッファから借用する）。
+        fn next_token(&mut self) -> &str {
+            let (start, end) = self.spans[self.cursor];
             self.cursor += 1;
-            token
+            &self.buffer[start..end]
         }
 
         /// 次のトークンを `n` 個取り出し、`T` にパースして `Vec<T>` にまとめる。
