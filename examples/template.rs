@@ -361,6 +361,24 @@ mod my_template_rust_in {
             }
         }
 
+        /// `_type` の型で `n` 行 `m` 列読み、`Vec<Vec<T>>`（グリッド）を1要素目に持つチェインを開始する。
+        pub fn read_vec_vec<'a, T>(
+            &'a mut self,
+            _type: T,
+            n: usize,
+            m: usize,
+        ) -> RustInChain<'a, TupleElement1<Vec<Vec<T>>>>
+        where
+            T: std::str::FromStr,
+            T::Err: std::fmt::Debug,
+        {
+            let v: Vec<Vec<T>> = (0..n).map(|_| self.next_tokens(m)).collect();
+            RustInChain {
+                rust_in: self,
+                values: Tuple::from_single(v),
+            }
+        }
+
         /// 次のトークンを1つ取り出す（コピーせずバッファから借用する）。
         /// トークンが尽きていて `reader` があれば1行読み足してから取り出す。
         fn next_token(&mut self) -> &str {
@@ -450,6 +468,25 @@ mod my_template_rust_in {
             T::Err: std::fmt::Debug,
         {
             let v: Vec<T> = self.rust_in.next_tokens(n);
+            RustInChain {
+                rust_in: self.rust_in,
+                values: self.values.add(v),
+            }
+        }
+
+        /// `_type` の型で `n` 行 `m` 列読み、`Vec<Vec<T>>`（グリッド）を1要素としてタプルに追加する。
+        pub fn read_vec_vec<T>(
+            mut self,
+            _type: T,
+            n: usize,
+            m: usize,
+        ) -> RustInChain<'a, <TE as TupleAdd<Vec<Vec<T>>>>::TupleAddOutput>
+        where
+            TE: TupleAdd<Vec<Vec<T>>>,
+            T: std::str::FromStr,
+            T::Err: std::fmt::Debug,
+        {
+            let v: Vec<Vec<T>> = (0..n).map(|_| self.rust_in.next_tokens(m)).collect();
             RustInChain {
                 rust_in: self.rust_in,
                 values: self.values.add(v),
