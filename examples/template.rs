@@ -272,7 +272,7 @@ mod my_template_tuple {
 
 mod my_template_rust_in {
     use super::my_template_tuple::{Tuple, TupleAdd, TupleElement1, TupleGet};
-    use std::io::{self, Read};
+    use std::io::{self, BufRead, Read, StdinLock};
 
     /// `RustIn::read<T>()` に型情報を与えるためのダミー定数
     pub const I8: i8 = 0;
@@ -298,34 +298,36 @@ mod my_template_rust_in {
         buffer: String,
         spans: Vec<(usize, usize)>,
         cursor: usize,
+        /// `Some` のときだけ「トークンが尽きたら1行読み足す」インタラクティブモードになる。
+        reader: Option<io::BufReader<StdinLock<'static>>>,
     }
 
     impl RustIn {
-        /// 標準入力を読み込んで `RustIn` を生成する。
+        /// 標準入力を一括で読み込んで `RustIn` を生成する（バッチ問題向け・高速）。
         pub fn new() -> Self {
+            let mut buffer = String::new();
+            io::stdin().read_to_string(&mut buffer).unwrap();
             let mut new = Self {
-                buffer: String::new(),
+                buffer,
                 spans: Vec::new(),
                 cursor: 0,
+                reader: None,
             };
-            new.load();
+            new.tokenize_from(0);
             new
         }
 
-        /// 標準入力から追加でトークンを読み込む（複数回の入力に対応するため）。
-        pub fn load(&mut self) -> &mut Self {
-            let start = self.buffer.len();
-            io::stdin().read_to_string(&mut self.buffer).unwrap();
-            let base_ptr = self.buffer.as_ptr() as usize;
-            let new_spans: Vec<(usize, usize)> = self.buffer[start..]
-                .split_whitespace()
-                .map(|s| {
-                    let start = s.as_ptr() as usize - base_ptr;
-                    (start, start + s.len())
-                })
-                .collect();
-            self.spans.extend(new_spans);
-            self
+        /// トークンが尽きるたびに1行だけ読み足す `RustIn` を生成する（インタラクティブ問題向け）。
+        ///
+        /// `read_to_string` による一括先読みはジャッジからの応答をブロックしてしまい使えないため、
+        /// `read_line` で1行ずつオンデマンドに読む。出力側は `RustOut::flush` を都度呼ぶこと。
+        pub fn new_interactive() -> Self {
+            Self {
+                buffer: String::new(),
+                spans: Vec::new(),
+                cursor: 0,
+                reader: Some(io::BufReader::new(io::stdin().lock())),
+            }
         }
 
         /// `_type` の型で1個読み、チェインを開始する。
@@ -360,10 +362,43 @@ mod my_template_rust_in {
         }
 
         /// 次のトークンを1つ取り出す（コピーせずバッファから借用する）。
+        /// トークンが尽きていて `reader` があれば1行読み足してから取り出す。
         fn next_token(&mut self) -> &str {
+            while self.cursor >= self.spans.len() {
+                if !self.refill_line() {
+                    panic!("入力が不足しています");
+                }
+            }
             let (start, end) = self.spans[self.cursor];
             self.cursor += 1;
             &self.buffer[start..end]
+        }
+
+        /// `reader` から1行読み、トークン化してバッファに追加する。読めれば `true`、EOFなら `false`。
+        fn refill_line(&mut self) -> bool {
+            let Some(reader) = self.reader.as_mut() else {
+                return false;
+            };
+            let start = self.buffer.len();
+            let n = reader.read_line(&mut self.buffer).unwrap();
+            if n == 0 {
+                return false;
+            }
+            self.tokenize_from(start);
+            true
+        }
+
+        /// `self.buffer[start..]` を空白区切りでトークン化し、バイト範囲として `spans` に追加する。
+        fn tokenize_from(&mut self, start: usize) {
+            let base_ptr = self.buffer.as_ptr() as usize;
+            let new_spans: Vec<(usize, usize)> = self.buffer[start..]
+                .split_whitespace()
+                .map(|s| {
+                    let off = s.as_ptr() as usize - base_ptr;
+                    (off, off + s.len())
+                })
+                .collect();
+            self.spans.extend(new_spans);
         }
 
         /// 次のトークンを `n` 個取り出し、`T` にパースして `Vec<T>` にまとめる。
