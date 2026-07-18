@@ -464,6 +464,60 @@ mod my_template_rust_in {
             self.values.get()
         }
     }
+
+    /// `read_vec2`〜`read_vec4`（`RustIn`・`RustInChain` 両方）を生成するマクロ。
+    /// 1行にN列ある入力を `n` 行読み、`Vec<(T1, ..., TN)>` にまとめる。
+    macro_rules! impl_read_vec_tuple {
+        ($( $name:ident < $( $t:ident ),+ > ),* $(,)?) => {
+            $(
+                impl RustIn {
+                    /// 1行に複数列ある入力を `n` 行読み、`Vec<(T1, ...)>` を1要素目に持つチェインを開始する。
+                    pub fn $name<'a, $( $t ),+>(
+                        &'a mut self,
+                        $( _: $t, )+
+                        n: usize,
+                    ) -> RustInChain<'a, TupleElement1<Vec<( $( $t ),+ ,)>>>
+                    where
+                        $( $t: std::str::FromStr, $t::Err: std::fmt::Debug, )+
+                    {
+                        let v: Vec<( $( $t ),+ ,)> = (0..n)
+                            .map(|_| ( $( self.next_token().parse::<$t>().unwrap() ),+ ,))
+                            .collect();
+                        RustInChain {
+                            rust_in: self,
+                            values: Tuple::from_single(v),
+                        }
+                    }
+                }
+
+                impl<'a, TE> RustInChain<'a, TE> {
+                    /// 1行に複数列ある入力を `n` 行読み、`Vec<(T1, ...)>` を1要素としてタプルに追加する。
+                    pub fn $name<$( $t ),+>(
+                        self,
+                        $( _: $t, )+
+                        n: usize,
+                    ) -> RustInChain<'a, <TE as TupleAdd<Vec<( $( $t ),+ ,)>>>::TupleAddOutput>
+                    where
+                        TE: TupleAdd<Vec<( $( $t ),+ ,)>>,
+                        $( $t: std::str::FromStr, $t::Err: std::fmt::Debug, )+
+                    {
+                        let v: Vec<( $( $t ),+ ,)> = (0..n)
+                            .map(|_| ( $( self.rust_in.next_token().parse::<$t>().unwrap() ),+ ,))
+                            .collect();
+                        RustInChain {
+                            rust_in: self.rust_in,
+                            values: self.values.add(v),
+                        }
+                    }
+                }
+            )*
+        };
+    }
+    impl_read_vec_tuple! {
+        read_vec2<T1, T2>,
+        read_vec3<T1, T2, T3>,
+        read_vec4<T1, T2, T3, T4>,
+    }
 }
 
 mod my_template_rust_out {
