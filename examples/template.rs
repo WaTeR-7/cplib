@@ -1,72 +1,77 @@
 #![allow(unused_imports, dead_code, unused_variables, unused_mut, unused_macros)]
 
-use proconio::input;
-use std::f64::consts::PI;
-
-/// 32bit の「無限大」定数。`i32::MAX` だと加算でオーバーフローするため余裕を持たせている。
-const INF32: i32 = 1 << 30;
-/// 64bit の「無限大」定数。`i64::MAX` だと加算でオーバーフローするため余裕を持たせている。
-const INF64: i64 = 1 << 60;
-/// 法 998244353（NTT-friendly な素数）。
-const P998: u64 = 998_244_353;
-/// 法 1,000,000,007。
-const P100: u64 = 1_000_000_007;
-
-/// 3値以上の最小値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
-macro_rules! min {
-    ($a:expr $(,)?) => {
-        $a
-    };
-    ($a:expr, $($rest:expr),+ $(,)?) => {{
-        let a = $a;
-        let b = min!($($rest),+);
-        if a < b {
-            a
-        } else {
-            b
-        }
-    }};
+mod my_template_consts {
+    /// 32bit の「無限大」定数。`i32::MAX` だと加算でオーバーフローするため余裕を持たせている。
+    pub const INF32: i32 = 1 << 30;
+    /// 64bit の「無限大」定数。`i64::MAX` だと加算でオーバーフローするため余裕を持たせている。
+    pub const INF64: i64 = 1 << 60;
+    /// 法 998244353（NTT-friendly な素数）。
+    pub const P998: u64 = 998_244_353;
+    /// 法 1,000,000,007。
+    pub const P100: u64 = 1_000_000_007;
+    /// 円周率。
+    pub const PI: f64 = std::f64::consts::PI;
 }
 
-/// 3値以上の最大値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
-macro_rules! max {
-    ($a:expr $(,)?) => {
-        $a
-    };
-    ($a:expr, $($rest:expr),+ $(,)?) => {{
-        let a = $a;
-        let b = max!($($rest),+);
-        if a > b {
-            a
-        } else {
-            b
-        }
-    }};
-}
+mod my_template_minmax {
+    /// 3値以上の最小値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
+    macro_rules! min {
+        ($a:expr $(,)?) => {
+            $a
+        };
+        ($a:expr, $($rest:expr),+ $(,)?) => {{
+            let a = $a;
+            let b = min!($($rest),+);
+            if a < b {
+                a
+            } else {
+                b
+            }
+        }};
+    }
+    pub(crate) use min;
 
-/// `x.chmin(y)` / `x.chmax(y)` で使う chmin/chmax トレイト。
-trait ChminChmax: PartialOrd + Sized {
-    /// `self` が `other` より大きければ `self = other` として更新する。更新有無を bool で返す。
-    fn chmin(&mut self, other: Self) -> bool {
-        if *self > other {
-            *self = other;
-            true
-        } else {
-            false
+    /// 3値以上の最大値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
+    macro_rules! max {
+        ($a:expr $(,)?) => {
+            $a
+        };
+        ($a:expr, $($rest:expr),+ $(,)?) => {{
+            let a = $a;
+            let b = max!($($rest),+);
+            if a > b {
+                a
+            } else {
+                b
+            }
+        }};
+    }
+    pub(crate) use max;
+
+    /// `x.chmin(y)` / `x.chmax(y)` で使う chmin/chmax トレイト。
+    pub trait ChminChmax: PartialOrd + Sized {
+        /// `self` が `other` より大きければ `self = other` として更新する。更新有無を bool で返す。
+        fn chmin(&mut self, other: Self) -> bool {
+            if *self > other {
+                *self = other;
+                true
+            } else {
+                false
+            }
+        }
+
+        /// `self` が `other` より小さければ `self = other` として更新する。更新有無を bool で返す。
+        fn chmax(&mut self, other: Self) -> bool {
+            if *self < other {
+                *self = other;
+                true
+            } else {
+                false
+            }
         }
     }
-
-    /// `self` が `other` より小さければ `self = other` として更新する。更新有無を bool で返す。
-    fn chmax(&mut self, other: Self) -> bool {
-        if *self < other {
-            *self = other;
-            true
-        } else {
-            false
-        }
-    }
+    impl<T: PartialOrd> ChminChmax for T {}
 }
-impl<T: PartialOrd> ChminChmax for T {}
 
 mod my_template_tuple {
     /// 中身が空のタプル要素の定義
@@ -755,6 +760,8 @@ mod my_template_rust_out {
     impl_ro_float!(f32, f64);
 }
 
+use my_template_consts::*;
+use my_template_minmax::*;
 use my_template_rust_in::*;
 use my_template_rust_out::*;
 
