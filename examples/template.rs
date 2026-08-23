@@ -279,7 +279,37 @@ mod my_template_rust_in {
     use super::my_template_tuple::{Tuple, TupleAdd, TupleElement1, TupleGet};
     use std::io::{self, BufRead, Read, StdinLock};
 
-    /// `RustIn::read<T>()` に型情報を与えるためのダミー定数
+    /// `RustIn::read` などに「何をどう読むか」を伝えるマーカー。
+    ///
+    /// `FromStr` を持つ型はブランケット実装で自分自身がマーカーになるため、`rin.read(US)` の
+    /// ように「読みたい型のダミー値」を渡せばその型が返る（`Output = Self`）。
+    /// 一方、`US1`（1-indexed を読んで 0-indexed で返す）のように**読む型と返す型が違う**
+    /// マーカーは、このファイル固有のゼロサイズ型として定義する。ローカル型なので
+    /// 上記ブランケット実装とは衝突しない（`(A, B)` のような外部型ではコヒーレンス違反になる
+    /// ため、複数トークンをまとめるマーカーは `Tup2` などのローカル型で包んでいる）。
+    ///
+    /// `&self` を取るので `vecm(US, n)` のように**実行時パラメータを持つマーカー**が書け、
+    /// `rin` を受け取るので**複数トークンを消費するマーカー**（グリッド・グラフ）も書ける。
+    pub trait Readable {
+        /// このマーカーを読んだときに返る型。
+        type Output;
+        /// `rin` からトークンを消費して値を作る。
+        fn read_value(&self, rin: &mut RustIn) -> Self::Output;
+    }
+
+    /// `FromStr` な型はダミー値そのものがマーカーになる（`US` → `usize`、`STR` → `String`）。
+    impl<T> Readable for T
+    where
+        T: std::str::FromStr,
+        T::Err: std::fmt::Debug,
+    {
+        type Output = T;
+        fn read_value(&self, rin: &mut RustIn) -> T {
+            rin.next_token().parse().unwrap()
+        }
+    }
+
+    /// `FromStr` 経由のマーカーに使うダミー定数。
     pub const I8: i8 = 0;
     pub const I16: i16 = 0;
     pub const I32: i32 = 0;
@@ -292,8 +322,219 @@ mod my_template_rust_in {
     pub const U64: u64 = 0;
     pub const U128: u128 = 0;
     pub const US: usize = 0;
+    pub const F32: f32 = 0.0;
+    pub const F64: f64 = 0.0;
     pub const STR: String = String::new();
     pub const CHAR: char = ' ';
+
+    /// 返す型が入力と異なるマーカー（ゼロサイズ型＋定数）をまとめて定義するマクロ。
+    macro_rules! def_markers {
+        ($(
+            $(#[$attr:meta])*
+            $name:ident as $konst:ident -> $out:ty { |$rin:ident| $body:expr }
+        )*) => {$(
+            $(#[$attr])*
+            pub struct $name;
+            $(#[$attr])*
+            pub const $konst: $name = $name;
+            impl Readable for $name {
+                type Output = $out;
+                fn read_value(&self, $rin: &mut RustIn) -> $out {
+                    $body
+                }
+            }
+        )*};
+    }
+
+    def_markers! {
+        /// 1-indexed の頂点番号などを読み、`-1` して 0-indexed の `usize` で返す。
+        Usize1 as US1 -> usize { |rin| rin.next_token().parse::<usize>().unwrap() - 1 }
+        /// `US1` の符号付き版。
+        Isize1 as IS1 -> isize { |rin| rin.next_token().parse::<isize>().unwrap() - 1 }
+        /// 1トークンを `Vec<u8>` として読む。`s[i][j] == b'#'` のような添字アクセスができ、
+        /// グリッド問題では `String` より扱いやすい。
+        Bytes as BYTES -> Vec<u8> { |rin| rin.next_token().as_bytes().to_vec() }
+        /// 1トークンを `Vec<char>` として読む（非ASCIIや `char` 前提の処理向け）。
+        Chars as CHARS -> Vec<char> { |rin| rin.next_token().chars().collect() }
+        /// 数字列を各桁の数値 `Vec<u8>` として読む（`"314"` → `[3, 1, 4]`）。
+        Digits as DIGITS -> Vec<u8> { |rin| rin.next_token().bytes().map(|b| b - b'0').collect() }
+        /// `"1"` を `true`、それ以外を `false` として読む。
+        Bool01 as B01 -> bool { |rin| rin.next_token() == "1" }
+        /// 現在位置から行末までを1つの `String` として読む（空白を含む1行が欲しいとき）。
+        Line as LINE -> String { |rin| rin.next_line().to_owned() }
+    }
+
+    /// `vecm(m, n)`: マーカー `m` を `n` 回読んで `Vec` にするマーカー。
+    /// `vecm(vecm(US, m), n)` のようにネストできる。
+    pub struct VecOf<M>(M, usize);
+
+    /// `VecOf` を作る（`rin.read_vec(m, n)` と同じものをマーカーとして持ち回れる）。
+    pub fn vecm<M>(marker: M, n: usize) -> VecOf<M> {
+        VecOf(marker, n)
+    }
+
+    impl<M: Readable> Readable for VecOf<M> {
+        type Output = Vec<M::Output>;
+        fn read_value(&self, rin: &mut RustIn) -> Self::Output {
+            let mut v = Vec::with_capacity(self.1);
+            for _ in 0..self.1 {
+                v.push(self.0.read_value(rin));
+            }
+            v
+        }
+    }
+
+    /// 複数のマーカーを連続して読み、タプルとして返すマーカー（`tup2`〜`tup4`）を定義するマクロ。
+    macro_rules! def_tuple_markers {
+        ($( $name:ident, $func:ident, ( $( $t:ident $field:ident $idx:tt ),+ ) );* $(;)?) => {$(
+            /// 複数のマーカーを連続して読み、タプルとして返すマーカー。
+            pub struct $name < $( $t ),+ >( $( $t ),+ );
+
+            /// 上記マーカーを作る。`read_vec(tup2(US1, US1), m)` で 0-indexed の辺リストが読める。
+            pub fn $func < $( $t ),+ >( $( $field: $t ),+ ) -> $name < $( $t ),+ > {
+                $name( $( $field ),+ )
+            }
+
+            impl< $( $t: Readable ),+ > Readable for $name < $( $t ),+ > {
+                type Output = ( $( $t::Output ),+ ,);
+                fn read_value(&self, rin: &mut RustIn) -> Self::Output {
+                    // タプル式は左から右に評価されるので、読む順序は書いた順になる。
+                    ( $( self.$idx.read_value(rin) ),+ ,)
+                }
+            }
+        )*};
+    }
+
+    def_tuple_markers! {
+        Tup2, tup2, (A a 0, B b 1);
+        Tup3, tup3, (A a 0, B b 1, C c 2);
+        Tup4, tup4, (A a 0, B b 1, C c 2, D d 3);
+    }
+
+    /// `grid(h)`: 区切り無しの文字列 `h` 行を `Vec<Vec<u8>>` として読むマーカー
+    /// （`vecm(BYTES, h)` と同じだが意図が明確）。
+    pub struct Grid(usize);
+
+    /// `Grid` を作る。
+    pub fn grid(h: usize) -> Grid {
+        Grid(h)
+    }
+
+    impl Readable for Grid {
+        type Output = Vec<Vec<u8>>;
+        fn read_value(&self, rin: &mut RustIn) -> Self::Output {
+            let mut g = Vec::with_capacity(self.0);
+            for _ in 0..self.0 {
+                g.push(rin.next_token().as_bytes().to_vec());
+            }
+            g
+        }
+    }
+
+    /// `grid_pad(h, w, pad)`: 四辺を `pad` で囲んだ `(h + 2) * (w + 2)` のグリッドを読むマーカー。
+    /// 番兵があるので探索時の範囲外判定が不要になる（入力の `(i, j)` は `(i + 1, j + 1)` に対応）。
+    pub struct GridPad(usize, usize, u8);
+
+    /// `GridPad` を作る。
+    pub fn grid_pad(h: usize, w: usize, pad: u8) -> GridPad {
+        GridPad(h, w, pad)
+    }
+
+    impl Readable for GridPad {
+        type Output = Vec<Vec<u8>>;
+        fn read_value(&self, rin: &mut RustIn) -> Self::Output {
+            let (h, w, pad) = (self.0, self.1, self.2);
+            let mut g = vec![vec![pad; w + 2]; h + 2];
+            for i in 0..h {
+                let row = rin.next_token().as_bytes();
+                g[i + 1][1..=w].copy_from_slice(&row[..w]);
+            }
+            g
+        }
+    }
+
+    /// `graph(n, m)` / `digraph(n, m)` / `tree(n)`: **1-indexed** の辺を `m` 本読み、
+    /// `n` 頂点の隣接リスト `Vec<Vec<usize>>`（0-indexed）にするマーカー。
+    pub struct GraphOf {
+        n: usize,
+        m: usize,
+        directed: bool,
+    }
+
+    /// 無向グラフ（辺 `m` 本）。
+    pub fn graph(n: usize, m: usize) -> GraphOf {
+        GraphOf { n, m, directed: false }
+    }
+
+    /// 有向グラフ（辺 `m` 本、`u -> v` のみ張る）。
+    pub fn digraph(n: usize, m: usize) -> GraphOf {
+        GraphOf { n, m, directed: true }
+    }
+
+    /// 木（辺 `n - 1` 本の無向グラフ）。
+    pub fn tree(n: usize) -> GraphOf {
+        GraphOf { n, m: n - 1, directed: false }
+    }
+
+    impl Readable for GraphOf {
+        type Output = Vec<Vec<usize>>;
+        fn read_value(&self, rin: &mut RustIn) -> Self::Output {
+            let mut g = vec![Vec::new(); self.n];
+            for _ in 0..self.m {
+                let u = rin.next_token().parse::<usize>().unwrap() - 1;
+                let v = rin.next_token().parse::<usize>().unwrap() - 1;
+                g[u].push(v);
+                if !self.directed {
+                    g[v].push(u);
+                }
+            }
+            g
+        }
+    }
+
+    /// `wgraph(n, m, W)` / `wdigraph(n, m, W)` / `wtree(n, W)`: 重み付き版。
+    /// **1-indexed** の `u v w` を `m` 行読み、`Vec<Vec<(usize, W::Output)>>` にする。
+    pub struct WGraphOf<W> {
+        n: usize,
+        m: usize,
+        directed: bool,
+        weight: W,
+    }
+
+    /// 重み付き無向グラフ（辺 `m` 本）。
+    pub fn wgraph<W>(n: usize, m: usize, weight: W) -> WGraphOf<W> {
+        WGraphOf { n, m, directed: false, weight }
+    }
+
+    /// 重み付き有向グラフ（辺 `m` 本）。
+    pub fn wdigraph<W>(n: usize, m: usize, weight: W) -> WGraphOf<W> {
+        WGraphOf { n, m, directed: true, weight }
+    }
+
+    /// 重み付き木（辺 `n - 1` 本の無向グラフ）。
+    pub fn wtree<W>(n: usize, weight: W) -> WGraphOf<W> {
+        WGraphOf { n, m: n - 1, directed: false, weight }
+    }
+
+    impl<W: Readable> Readable for WGraphOf<W>
+    where
+        W::Output: Clone,
+    {
+        type Output = Vec<Vec<(usize, W::Output)>>;
+        fn read_value(&self, rin: &mut RustIn) -> Self::Output {
+            let mut g = vec![Vec::new(); self.n];
+            for _ in 0..self.m {
+                let u = rin.next_token().parse::<usize>().unwrap() - 1;
+                let v = rin.next_token().parse::<usize>().unwrap() - 1;
+                let w = self.weight.read_value(rin);
+                g[u].push((v, w.clone()));
+                if !self.directed {
+                    g[v].push((u, w));
+                }
+            }
+            g
+        }
+    }
 
     /// 標準入力を1つの `String` バッファとして保持し、空白区切りのバイト範囲でトークン化する構造体。
     ///
@@ -335,53 +576,44 @@ mod my_template_rust_in {
             }
         }
 
-        /// `_type` の型で1個読み、チェインを開始する。
-        pub fn read<'a, T>(&'a mut self, _type: T) -> RustInChain<'a, TupleElement1<T>>
-        where
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
-        {
-            let token = self.next_token();
-            let value: T = token.parse().unwrap();
+        /// マーカー `marker` を1つ読み、チェインを開始する。
+        pub fn read<'a, M: Readable>(
+            &'a mut self,
+            marker: M,
+        ) -> RustInChain<'a, TupleElement1<M::Output>> {
+            let value = marker.read_value(self);
             RustInChain {
                 rust_in: self,
                 values: Tuple::from_single(value),
             }
         }
 
-        /// `_type` の型で `n` 個読み、`Vec<T>` を1要素目に持つチェインを開始する。
-        pub fn read_vec<'a, T>(
+        /// マーカー `marker` を `n` 回読み、`Vec` を1要素目に持つチェインを開始する。
+        pub fn read_vec<'a, M: Readable>(
             &'a mut self,
-            _type: T,
+            marker: M,
             n: usize,
-        ) -> RustInChain<'a, TupleElement1<Vec<T>>>
-        where
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
-        {
-            let v = self.next_tokens(n);
-            RustInChain {
-                rust_in: self,
-                values: Tuple::from_single(v),
-            }
+        ) -> RustInChain<'a, TupleElement1<Vec<M::Output>>> {
+            self.read(vecm(marker, n))
         }
 
-        /// `_type` の型で `n` 行 `m` 列読み、`Vec<Vec<T>>`（グリッド）を1要素目に持つチェインを開始する。
-        pub fn read_vec_vec<'a, T>(
+        /// マーカー `marker` を `n` 行 `m` 列読み、`Vec<Vec<_>>` を1要素目に持つチェインを開始する。
+        /// 空白区切りの数値行列向け（区切り無しの文字グリッドは `grid(h)` / `BYTES` を使う）。
+        pub fn read_vec_vec<'a, M: Readable>(
             &'a mut self,
-            _type: T,
+            marker: M,
             n: usize,
             m: usize,
-        ) -> RustInChain<'a, TupleElement1<Vec<Vec<T>>>>
-        where
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
-        {
-            let v: Vec<Vec<T>> = (0..n).map(|_| self.next_tokens(m)).collect();
-            RustInChain {
-                rust_in: self,
-                values: Tuple::from_single(v),
+        ) -> RustInChain<'a, TupleElement1<Vec<Vec<M::Output>>>> {
+            self.read(vecm(vecm(marker, m), n))
+        }
+
+        /// 使わないトークンを `n` 個読み飛ばす。
+        pub fn skip(&mut self, n: usize) -> &mut Self {
+            for _ in 0..n {
+                self.next_token();
             }
+            self
         }
 
         /// 次のトークンを1つ取り出す（コピーせずバッファから借用する）。
@@ -395,6 +627,24 @@ mod my_template_rust_in {
             let (start, end) = self.spans[self.cursor];
             self.cursor += 1;
             &self.buffer[start..end]
+        }
+
+        /// 次のトークンの先頭から行末までを取り出し、その行のトークンを読み飛ばす。
+        fn next_line(&mut self) -> &str {
+            while self.cursor >= self.spans.len() {
+                if !self.refill_line() {
+                    panic!("入力が不足しています");
+                }
+            }
+            let start = self.spans[self.cursor].0;
+            let end = match self.buffer[start..].find('\n') {
+                Some(offset) => start + offset,
+                None => self.buffer.len(),
+            };
+            while self.cursor < self.spans.len() && self.spans[self.cursor].0 < end {
+                self.cursor += 1;
+            }
+            self.buffer[start..end].trim_end()
         }
 
         /// `reader` から1行読み、トークン化してバッファに追加する。読めれば `true`、EOFなら `false`。
@@ -423,20 +673,6 @@ mod my_template_rust_in {
                 .collect();
             self.spans.extend(new_spans);
         }
-
-        /// 次のトークンを `n` 個取り出し、`T` にパースして `Vec<T>` にまとめる。
-        fn next_tokens<T>(&mut self, n: usize) -> Vec<T>
-        where
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
-        {
-            (0..n)
-                .map(|_| {
-                    let token = self.next_token();
-                    token.parse().unwrap()
-                })
-                .collect()
-        }
     }
 
     /// `RustIn::read`/`read_vec` から始まる、読んだ値をタプルとして組み立てていくチェイン。
@@ -446,56 +682,50 @@ mod my_template_rust_in {
     }
 
     impl<'a, TE> RustInChain<'a, TE> {
-        /// `_type` の型で1個読み、タプルに要素として追加する。
-        pub fn read<T>(mut self, _type: T) -> RustInChain<'a, <TE as TupleAdd<T>>::TupleAddOutput>
+        /// マーカー `marker` を1つ読み、タプルに要素として追加する。
+        pub fn read<M: Readable>(
+            self,
+            marker: M,
+        ) -> RustInChain<'a, <TE as TupleAdd<M::Output>>::TupleAddOutput>
         where
-            TE: TupleAdd<T>,
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
+            TE: TupleAdd<M::Output>,
         {
-            let token = self.rust_in.next_token();
-            let value: T = token.parse().unwrap();
+            let value = marker.read_value(self.rust_in);
             RustInChain {
                 rust_in: self.rust_in,
                 values: self.values.add(value),
             }
         }
 
-        /// `_type` の型で `n` 個読み、`Vec<T>` を1要素としてタプルに追加する。
-        pub fn read_vec<T>(
-            mut self,
-            _type: T,
+        /// マーカー `marker` を `n` 回読み、`Vec` を1要素としてタプルに追加する。
+        pub fn read_vec<M: Readable>(
+            self,
+            marker: M,
             n: usize,
-        ) -> RustInChain<'a, <TE as TupleAdd<Vec<T>>>::TupleAddOutput>
+        ) -> RustInChain<'a, <TE as TupleAdd<Vec<M::Output>>>::TupleAddOutput>
         where
-            TE: TupleAdd<Vec<T>>,
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
+            TE: TupleAdd<Vec<M::Output>>,
         {
-            let v: Vec<T> = self.rust_in.next_tokens(n);
-            RustInChain {
-                rust_in: self.rust_in,
-                values: self.values.add(v),
-            }
+            self.read(vecm(marker, n))
         }
 
-        /// `_type` の型で `n` 行 `m` 列読み、`Vec<Vec<T>>`（グリッド）を1要素としてタプルに追加する。
-        pub fn read_vec_vec<T>(
-            mut self,
-            _type: T,
+        /// マーカー `marker` を `n` 行 `m` 列読み、`Vec<Vec<_>>` を1要素としてタプルに追加する。
+        pub fn read_vec_vec<M: Readable>(
+            self,
+            marker: M,
             n: usize,
             m: usize,
-        ) -> RustInChain<'a, <TE as TupleAdd<Vec<Vec<T>>>>::TupleAddOutput>
+        ) -> RustInChain<'a, <TE as TupleAdd<Vec<Vec<M::Output>>>>::TupleAddOutput>
         where
-            TE: TupleAdd<Vec<Vec<T>>>,
-            T: std::str::FromStr,
-            T::Err: std::fmt::Debug,
+            TE: TupleAdd<Vec<Vec<M::Output>>>,
         {
-            let v: Vec<Vec<T>> = (0..n).map(|_| self.rust_in.next_tokens(m)).collect();
-            RustInChain {
-                rust_in: self.rust_in,
-                values: self.values.add(v),
-            }
+            self.read(vecm(vecm(marker, m), n))
+        }
+
+        /// 使わないトークンを `n` 個読み飛ばす（タプルには何も追加しない）。
+        pub fn skip(self, n: usize) -> Self {
+            self.rust_in.skip(n);
+            self
         }
 
         /// チェインで読んだ値をタプル（または単一値）として取り出す。
@@ -505,60 +735,6 @@ mod my_template_rust_in {
         {
             self.values.get()
         }
-    }
-
-    /// `read_vec2`〜`read_vec4`（`RustIn`・`RustInChain` 両方）を生成するマクロ。
-    /// 1行にN列ある入力を `n` 行読み、`Vec<(T1, ..., TN)>` にまとめる。
-    macro_rules! impl_read_vec_tuple {
-        ($( $name:ident < $( $t:ident ),+ > ),* $(,)?) => {
-            $(
-                impl RustIn {
-                    /// 1行に複数列ある入力を `n` 行読み、`Vec<(T1, ...)>` を1要素目に持つチェインを開始する。
-                    pub fn $name<'a, $( $t ),+>(
-                        &'a mut self,
-                        $( _: $t, )+
-                        n: usize,
-                    ) -> RustInChain<'a, TupleElement1<Vec<( $( $t ),+ ,)>>>
-                    where
-                        $( $t: std::str::FromStr, $t::Err: std::fmt::Debug, )+
-                    {
-                        let v: Vec<( $( $t ),+ ,)> = (0..n)
-                            .map(|_| ( $( self.next_token().parse::<$t>().unwrap() ),+ ,))
-                            .collect();
-                        RustInChain {
-                            rust_in: self,
-                            values: Tuple::from_single(v),
-                        }
-                    }
-                }
-
-                impl<'a, TE> RustInChain<'a, TE> {
-                    /// 1行に複数列ある入力を `n` 行読み、`Vec<(T1, ...)>` を1要素としてタプルに追加する。
-                    pub fn $name<$( $t ),+>(
-                        self,
-                        $( _: $t, )+
-                        n: usize,
-                    ) -> RustInChain<'a, <TE as TupleAdd<Vec<( $( $t ),+ ,)>>>::TupleAddOutput>
-                    where
-                        TE: TupleAdd<Vec<( $( $t ),+ ,)>>,
-                        $( $t: std::str::FromStr, $t::Err: std::fmt::Debug, )+
-                    {
-                        let v: Vec<( $( $t ),+ ,)> = (0..n)
-                            .map(|_| ( $( self.rust_in.next_token().parse::<$t>().unwrap() ),+ ,))
-                            .collect();
-                        RustInChain {
-                            rust_in: self.rust_in,
-                            values: self.values.add(v),
-                        }
-                    }
-                }
-            )*
-        };
-    }
-    impl_read_vec_tuple! {
-        read_vec2<T1, T2>,
-        read_vec3<T1, T2, T3>,
-        read_vec4<T1, T2, T3, T4>,
     }
 }
 
