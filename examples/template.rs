@@ -577,6 +577,13 @@ mod my_template_rust_in {
             }
         }
 
+        /// マーカー `marker` を1つだけ読み、チェインを経由せずそのまま値を返す。
+        /// 単一の値・`Vec`・グリッド・グラフなど「1つ読んで終わり」のときはこちらが短い
+        /// （`rin.read(US).get()` と同じ）。複数個をまとめて読むときは `read` でチェインする。
+        pub fn get<M: Readable>(&mut self, marker: M) -> M::Output {
+            marker.read_value(self)
+        }
+
         /// マーカー `marker` を1つ読み、チェインを開始する。
         pub fn read<'a, M: Readable>(
             &'a mut self,
