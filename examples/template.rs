@@ -11,6 +11,29 @@ mod my_template_consts {
     pub const P100: u64 = 1_000_000_007;
     /// 円周率。
     pub const PI: f64 = std::f64::consts::PI;
+    /// グリッドの4近傍（上・下・左・右）への移動量。`!0` は `usize` の `-1` 相当。
+    ///
+    /// `wrapping_add` で足すと、0 から `-1` した場合は巨大な値に回り込むので、
+    /// `ni < h && nj < w` の1回の比較で上下左右の範囲外をまとめて弾ける。
+    ///
+    /// ```ignore
+    /// for (di, dj) in DXY {
+    ///     let (ni, nj) = (i.wrapping_add(di), j.wrapping_add(dj));
+    ///     if ni < h && nj < w { /* ... */ }
+    /// }
+    /// ```
+    pub const DXY: [(usize, usize); 4] = [(!0, 0), (1, 0), (0, !0), (0, 1)];
+    /// グリッドの8近傍（斜めを含む）への移動量。使い方は `DXY` と同じ。
+    pub const DXY8: [(usize, usize); 8] = [
+        (!0, !0),
+        (!0, 0),
+        (!0, 1),
+        (0, !0),
+        (0, 1),
+        (1, !0),
+        (1, 0),
+        (1, 1),
+    ];
 }
 
 mod my_template_minmax {
