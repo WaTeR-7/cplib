@@ -37,39 +37,39 @@ mod my_template_consts {
 }
 
 mod my_template_minmax {
-    /// 3値以上の最小値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
-    macro_rules! min {
-        ($a:expr $(,)?) => {
-            $a
-        };
-        ($a:expr, $($rest:expr),+ $(,)?) => {{
-            let a = $a;
-            let b = min!($($rest),+);
-            if a < b {
-                a
-            } else {
-                b
-            }
-        }};
+    /// 2値の最小値。`PartialOrd` だけを要求するので `f64` にも使える
+    /// （`std::cmp::min` は `Ord` が要るので `f64` には使えない）。
+    ///
+    /// 同値なら std と同じく前の値を返す。`NaN` が混ざると比較がすべて false になるため
+    /// 前の値が返る（`f64::min` のように NaN を無視する挙動にはならない）。
+    pub fn min2<T: PartialOrd>(a: T, b: T) -> T {
+        if b < a { b } else { a }
     }
-    pub(crate) use min;
 
-    /// 3値以上の最大値を求める可変長マクロ（`PartialOrd` のみでよく `f64` にも使える）。
-    macro_rules! max {
-        ($a:expr $(,)?) => {
-            $a
-        };
-        ($a:expr, $($rest:expr),+ $(,)?) => {{
-            let a = $a;
-            let b = max!($($rest),+);
-            if a > b {
-                a
-            } else {
-                b
-            }
-        }};
+    /// 2値の最大値。同値なら std と同じく後ろの値を返す。詳細は `min2` と同じ。
+    pub fn max2<T: PartialOrd>(a: T, b: T) -> T {
+        if a > b { a } else { b }
     }
-    pub(crate) use max;
+
+    /// 3値の最小値。詳細は `min2` と同じ。
+    pub fn min3<T: PartialOrd>(a: T, b: T, c: T) -> T {
+        min2(min2(a, b), c)
+    }
+
+    /// 3値の最大値。詳細は `min2` と同じ。
+    pub fn max3<T: PartialOrd>(a: T, b: T, c: T) -> T {
+        max2(max2(a, b), c)
+    }
+
+    /// 4値の最小値。詳細は `min2` と同じ。
+    pub fn min4<T: PartialOrd>(a: T, b: T, c: T, d: T) -> T {
+        min2(min2(a, b), min2(c, d))
+    }
+
+    /// 4値の最大値。詳細は `min2` と同じ。
+    pub fn max4<T: PartialOrd>(a: T, b: T, c: T, d: T) -> T {
+        max2(max2(a, b), max2(c, d))
+    }
 
     /// `x.chmin(y)` / `x.chmax(y)` で使う chmin/chmax トレイト。
     pub trait ChminChmax: PartialOrd + Sized {
