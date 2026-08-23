@@ -288,7 +288,7 @@ mod my_template_rust_in {
     /// 上記ブランケット実装とは衝突しない（`(A, B)` のような外部型ではコヒーレンス違反になる
     /// ため、複数トークンをまとめるマーカーは `Tup2` などのローカル型で包んでいる）。
     ///
-    /// `&self` を取るので `vecm(US, n)` のように**実行時パラメータを持つマーカー**が書け、
+    /// `&self` を取るので `vec_of(US, n)` のように**実行時パラメータを持つマーカー**が書け、
     /// `rin` を受け取るので**複数トークンを消費するマーカー**（グリッド・グラフ）も書ける。
     pub trait Readable {
         /// このマーカーを読んだときに返る型。
@@ -364,12 +364,13 @@ mod my_template_rust_in {
         Line as LINE -> String { |rin| rin.next_line().to_owned() }
     }
 
-    /// `vecm(m, n)`: マーカー `m` を `n` 回読んで `Vec` にするマーカー。
-    /// `vecm(vecm(US, m), n)` のようにネストできる。
+    /// `vec_of(marker, n)`: マーカーを `n` 回読んで `Vec` にするマーカー。
+    /// `vec_of(vec_of(US, m), n)` とネストすれば空白区切りの数値行列も読める
+    /// （区切り無しの文字グリッドは `grid(h)` / `BYTES` を使う）。
     pub struct VecOf<M>(M, usize);
 
-    /// `VecOf` を作る（`rin.read_vec(m, n)` と同じものをマーカーとして持ち回れる）。
-    pub fn vecm<M>(marker: M, n: usize) -> VecOf<M> {
+    /// `VecOf` を作る（`rin.read(vec_of(US, n))` で `Vec<usize>` が読める）。
+    pub fn vec_of<M>(marker: M, n: usize) -> VecOf<M> {
         VecOf(marker, n)
     }
 
@@ -390,7 +391,7 @@ mod my_template_rust_in {
             /// 複数のマーカーを連続して読み、タプルとして返すマーカー。
             pub struct $name < $( $t ),+ >( $( $t ),+ );
 
-            /// 上記マーカーを作る。`read_vec(tup2(US1, US1), m)` で 0-indexed の辺リストが読める。
+            /// 上記マーカーを作る。`read(vec_of(tup2(US1, US1), m))` で 0-indexed の辺リストが読める。
             pub fn $func < $( $t ),+ >( $( $field: $t ),+ ) -> $name < $( $t ),+ > {
                 $name( $( $field ),+ )
             }
@@ -412,7 +413,7 @@ mod my_template_rust_in {
     }
 
     /// `grid(h)`: 区切り無しの文字列 `h` 行を `Vec<Vec<u8>>` として読むマーカー
-    /// （`vecm(BYTES, h)` と同じだが意図が明確）。
+    /// （`vec_of(BYTES, h)` と同じだが意図が明確）。
     pub struct Grid(usize);
 
     /// `Grid` を作る。
@@ -588,26 +589,6 @@ mod my_template_rust_in {
             }
         }
 
-        /// マーカー `marker` を `n` 回読み、`Vec` を1要素目に持つチェインを開始する。
-        pub fn read_vec<'a, M: Readable>(
-            &'a mut self,
-            marker: M,
-            n: usize,
-        ) -> RustInChain<'a, TupleElement1<Vec<M::Output>>> {
-            self.read(vecm(marker, n))
-        }
-
-        /// マーカー `marker` を `n` 行 `m` 列読み、`Vec<Vec<_>>` を1要素目に持つチェインを開始する。
-        /// 空白区切りの数値行列向け（区切り無しの文字グリッドは `grid(h)` / `BYTES` を使う）。
-        pub fn read_vec_vec<'a, M: Readable>(
-            &'a mut self,
-            marker: M,
-            n: usize,
-            m: usize,
-        ) -> RustInChain<'a, TupleElement1<Vec<Vec<M::Output>>>> {
-            self.read(vecm(vecm(marker, m), n))
-        }
-
         /// 使わないトークンを `n` 個読み飛ばす。
         pub fn skip(&mut self, n: usize) -> &mut Self {
             for _ in 0..n {
@@ -675,7 +656,7 @@ mod my_template_rust_in {
         }
     }
 
-    /// `RustIn::read`/`read_vec` から始まる、読んだ値をタプルとして組み立てていくチェイン。
+    /// `RustIn::read` から始まる、読んだ値をタプルとして組み立てていくチェイン。
     pub struct RustInChain<'a, TE> {
         rust_in: &'a mut RustIn,
         values: Tuple<TE>,
@@ -695,31 +676,6 @@ mod my_template_rust_in {
                 rust_in: self.rust_in,
                 values: self.values.add(value),
             }
-        }
-
-        /// マーカー `marker` を `n` 回読み、`Vec` を1要素としてタプルに追加する。
-        pub fn read_vec<M: Readable>(
-            self,
-            marker: M,
-            n: usize,
-        ) -> RustInChain<'a, <TE as TupleAdd<Vec<M::Output>>>::TupleAddOutput>
-        where
-            TE: TupleAdd<Vec<M::Output>>,
-        {
-            self.read(vecm(marker, n))
-        }
-
-        /// マーカー `marker` を `n` 行 `m` 列読み、`Vec<Vec<_>>` を1要素としてタプルに追加する。
-        pub fn read_vec_vec<M: Readable>(
-            self,
-            marker: M,
-            n: usize,
-            m: usize,
-        ) -> RustInChain<'a, <TE as TupleAdd<Vec<Vec<M::Output>>>>::TupleAddOutput>
-        where
-            TE: TupleAdd<Vec<Vec<M::Output>>>,
-        {
-            self.read(vecm(vecm(marker, m), n))
         }
 
         /// 使わないトークンを `n` 個読み飛ばす（タプルには何も追加しない）。
