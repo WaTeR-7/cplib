@@ -302,7 +302,7 @@ mod tests {
     fn zero_one_and_default() {
         assert_eq!(Mint::zero().value(), 0);
         assert_eq!(Mint::one().value(), 1);
-        assert_eq!(Mint::default().value(), 0);
+        assert_eq!(Mint::default(), Mint::zero());
     }
 
     #[test]
@@ -344,23 +344,23 @@ mod tests {
             [a * b, a * &b, &a * b, &a * &b],
             [a / b, a / &b, &a / b, &a / &b],
         ] {
-            assert_eq!(x.value(), y.value());
-            assert_eq!(x.value(), z.value());
-            assert_eq!(x.value(), w.value());
+            assert_eq!(x, y);
+            assert_eq!(x, z);
+            assert_eq!(x, w);
         }
         // o= も右辺に参照を取れること
         let mut c = a;
         c += &b;
-        assert_eq!(c.value(), (a + b).value());
+        assert_eq!(c, a + b);
         let mut c = a;
         c -= &b;
-        assert_eq!(c.value(), (a - b).value());
+        assert_eq!(c, a - b);
         let mut c = a;
         c *= &b;
-        assert_eq!(c.value(), (a * b).value());
+        assert_eq!(c, a * b);
         let mut c = a;
         c /= &b;
-        assert_eq!(c.value(), (a / b).value());
+        assert_eq!(c, a / b);
     }
 
     #[test]
@@ -369,7 +369,7 @@ mod tests {
         assert_eq!((-Mint::one()).value(), P - 1);
         let a = Mint::new(12345);
         assert_eq!((a + -a).value(), 0);
-        assert_eq!((-(-a)).value(), a.value());
+        assert_eq!(-(-a), a);
     }
 
     #[test]
@@ -397,7 +397,7 @@ mod tests {
             let a = Mint::new(a);
             assert_eq!((a * a.inv()).value(), 1);
             // P が素数なら逆元はフェルマーの小定理でも求まる
-            assert_eq!(a.inv().value(), a.pow((P - 2) as u64).value());
+            assert_eq!(a.inv(), a.pow((P - 2) as u64));
         }
         assert_eq!(Mint::new(2).inv().value(), 499_122_177);
     }
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn derives_eq_ord_hash() {
-        assert!(Mint::new(P + 5) == Mint::new(5));
+        assert_eq!(Mint::new(P + 5), Mint::new(5));
         assert!(Mint::new(1) < Mint::new(2));
         let set: HashSet<Mint> = [Mint::new(5), Mint::new(P + 5)].into_iter().collect();
         assert_eq!(set.len(), 1);
