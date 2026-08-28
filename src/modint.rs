@@ -2,6 +2,7 @@ use cargo_snippet::snippet;
 
 /// コンパイル時定数を法とする剰余体。
 #[snippet("modint")]
+#[snippet(prefix = "use my_template_modint::*;")]
 mod my_template_modint {
     use std::iter::{Product, Sum};
     use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
