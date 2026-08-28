@@ -6,15 +6,24 @@ mod my_template_modint {
     use std::iter::{Product, Sum};
     use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+    /// 法 MOD の剰余体
+    /// MOD は 1..=2^31 でなければならず、範囲外はコンパイルエラーになる
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
     pub struct ModInt<const MOD: u32> {
         val: u32,
     }
 
     impl<const MOD: u32> ModInt<MOD> {
+        /// MOD の範囲をコンパイル時に検査する
+        /// 上限は加算の桁溢れ回避（2*(MOD-1) が u32 に収まること）、下限は 0 除算回避
+        const MOD_OK: () = assert!(0 < MOD && MOD <= 1 << 31, "MOD must be in 1..=2^31");
+
         /// 整数型から ModInt を生成する
         #[inline]
         pub fn new<T: RemEuclidU32>(v: T) -> Self {
+            // MOD_OK を発火させるだけ。コンパイル時に評価され実行時コストはない
+            // 呼ばれない関数に置くと単相化されず検査が効かないので、ここに書く
+            let () = Self::MOD_OK;
             Self {
                 val: v.rem_euclid_u32(MOD),
             }
@@ -34,7 +43,7 @@ mod my_template_modint {
 
         /// ModInt から値を取り出す
         #[inline]
-        pub fn value(&self) -> u32 {
+        pub fn value(self) -> u32 {
             self.val
         }
 
@@ -164,6 +173,15 @@ mod my_template_modint {
         #[inline]
         fn neg(self) -> Self {
             Self::new(if self.val == 0 { 0 } else { MOD - self.val })
+        }
+    }
+
+    /// - &ModInt の実装
+    impl<const MOD: u32> Neg for &ModInt<MOD> {
+        type Output = ModInt<MOD>;
+        #[inline]
+        fn neg(self) -> ModInt<MOD> {
+            Neg::neg(*self)
         }
     }
 
@@ -370,6 +388,9 @@ mod tests {
         let a = Mint::new(12345);
         assert_eq!((a + -a).value(), 0);
         assert_eq!(-(-a), a);
+        // 参照にも単項マイナスを適用できること
+        assert_eq!(-&a, -a);
+        assert_eq!(-&Mint::zero(), Mint::zero());
     }
 
     #[test]
@@ -451,7 +472,7 @@ mod tests {
     #[test]
     fn mod_close_to_2_pow_31_does_not_overflow() {
         // 加算は u32 のまま行うので、2*(MOD-1) が u32 に収まる MOD <= 2^31 が上限。
-        // 使える最大クラスの法として 2^31-1（メルセンヌ素数）で確認する。
+        // 素数として使える最大クラスの法 2^31-1（メルセンヌ素数）で確認する。
         const Q: u32 = 2_147_483_647;
         type Big = ModInt<2_147_483_647>;
         assert_eq!((Big::new(Q - 1) + Big::new(Q - 1)).value(), Q - 2);
@@ -459,5 +480,16 @@ mod tests {
         assert_eq!((Big::new(Q - 1) * Big::new(Q - 1)).value(), 1);
         let a = Big::new(123_456_789);
         assert_eq!((a * a.inv()).value(), 1);
+    }
+
+    #[test]
+    fn mod_exactly_2_pow_31_is_accepted() {
+        // MOD_OK が許す上限ちょうど。2*(MOD-1) = 2^32-2 で u32 に収まる。
+        // （合成数なので逆元は取れない。加減乗のみ確認する）
+        const Q: u32 = 1 << 31;
+        type Max = ModInt<{ 1 << 31 }>;
+        assert_eq!((Max::new(Q - 1) + Max::new(Q - 1)).value(), Q - 2);
+        assert_eq!((Max::zero() - Max::new(1)).value(), Q - 1);
+        assert_eq!((Max::new(Q - 1) * Max::new(Q - 1)).value(), 1);
     }
 }
