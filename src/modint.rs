@@ -1,3 +1,7 @@
+use cargo_snippet::snippet;
+
+/// コンパイル時定数を法とする剰余体。
+#[snippet("modint")]
 mod my_template_modint {
     use std::iter::{Product, Sum};
     use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -44,6 +48,7 @@ mod my_template_modint {
                     res *= pow;
                 }
                 pow *= pow;
+                x >>= 1;
             }
             res
         }
@@ -84,7 +89,7 @@ mod my_template_modint {
             }
         )*};
     }
-    /// マクロを使った i8, i16, i32, i64, isize の RemEuclidU32 の実装
+    // マクロを使った i8, i16, i32, i64, isize の RemEuclidU32 の実装
     impl_rem_euclid_signed!(i8, i16, i32, i64, isize);
 
     /// 符号なし整数の RemEuclidU32 の実装のマクロ
@@ -98,7 +103,7 @@ mod my_template_modint {
             }
         )*};
     }
-    /// マクロを使った u8, u16, u32, u64 usize の RemEuclidU32 の実装
+    // マクロを使った u8, u16, u32, u64, usize の RemEuclidU32 の実装
     impl_rem_euclid_unsigned!(u8, u16, u32, u64, usize);
 
     /// 128 bit 整数の RemEuclidU32 の実装のマクロ
@@ -112,7 +117,7 @@ mod my_template_modint {
             }
         )*};
     }
-    /// マクロを使った i128, u128 の RemEuclidU32 の実装
+    // マクロを使った i128, u128 の RemEuclidU32 の実装
     impl_rem_euclid_128!(i128, u128);
 
     /// ModInt += ModInt の実装
@@ -211,7 +216,7 @@ mod my_template_modint {
             }
         )*};
     }
-    /// マクロを使った、値 / 参照 それぞれの四則演算子の実装
+    // マクロを使った、値 / 参照 それぞれの四則演算子の実装
     impl_binop! {
         Add, add, AddAssign, add_assign;
         Sub, sub, SubAssign, sub_assign;
