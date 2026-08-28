@@ -6,7 +6,7 @@ mod my_template_modint {
     use std::iter::{Product, Sum};
     use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
     pub struct ModInt<const MOD: u32> {
         val: u32,
     }
@@ -250,5 +250,214 @@ mod my_template_modint {
         fn product<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
             iter.fold(Self::one(), Mul::mul)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::my_template_modint::ModInt;
+    use std::collections::{BTreeSet, HashSet};
+
+    /// 法 998244353（NTT-friendly な素数）。競プロで最も使う設定。
+    const P: u32 = 998_244_353;
+    type Mint = ModInt<998_244_353>;
+
+    #[test]
+    fn new_reduces_by_mod() {
+        assert_eq!(Mint::new(0).value(), 0);
+        assert_eq!(Mint::new(1).value(), 1);
+        assert_eq!(Mint::new(P).value(), 0);
+        assert_eq!(Mint::new(P + 1).value(), 1);
+        assert_eq!(Mint::new(2 * P as u64).value(), 0);
+        assert_eq!(Mint::new(P as u64 * 3 + 5).value(), 5);
+    }
+
+    #[test]
+    fn new_accepts_negative() {
+        assert_eq!(Mint::new(-1i32).value(), P - 1);
+        assert_eq!(Mint::new(-(P as i64)).value(), 0);
+        assert_eq!(Mint::new(-(P as i64) - 1).value(), P - 1);
+        assert_eq!(Mint::new(-1i8).value(), P - 1);
+        assert_eq!(Mint::new(-1isize).value(), P - 1);
+    }
+
+    #[test]
+    fn new_accepts_every_int_type() {
+        // 符号なし
+        assert_eq!(Mint::new(7u8).value(), 7);
+        assert_eq!(Mint::new(7u16).value(), 7);
+        assert_eq!(Mint::new(7u32).value(), 7);
+        assert_eq!(Mint::new(7usize).value(), 7);
+        assert_eq!(Mint::new(u64::MAX).value(), 932_051_909);
+        assert_eq!(Mint::new(u128::MAX).value(), 299_560_063);
+        // 符号付き。境界値も rem_euclid なので必ず非負に落ちる
+        assert_eq!(Mint::new(7i8).value(), 7);
+        assert_eq!(Mint::new(7i16).value(), 7);
+        assert_eq!(Mint::new(i32::MIN).value(), 847_249_411);
+        assert_eq!(Mint::new(i64::MIN).value(), 532_218_398);
+        assert_eq!(Mint::new(i128::MIN).value(), 848_464_321);
+    }
+
+    #[test]
+    fn zero_one_and_default() {
+        assert_eq!(Mint::zero().value(), 0);
+        assert_eq!(Mint::one().value(), 1);
+        assert_eq!(Mint::default().value(), 0);
+    }
+
+    #[test]
+    fn arithmetic() {
+        let (a, b) = (Mint::new(10), Mint::new(3));
+        assert_eq!((a + b).value(), 13);
+        assert_eq!((a - b).value(), 7);
+        assert_eq!((b - a).value(), P - 7);
+        assert_eq!((a * b).value(), 30);
+        assert_eq!((a / b * b).value(), 10);
+        // 繰り上がり・繰り下がりが MOD をまたぐケース
+        assert_eq!((Mint::new(P - 1) + Mint::one()).value(), 0);
+        assert_eq!((Mint::zero() - Mint::one()).value(), P - 1);
+        // 乗算は u64 に広げてから剰余を取るので (P-1)^2 でも溢れない
+        assert_eq!((Mint::new(P - 1) * Mint::new(P - 1)).value(), 1);
+    }
+
+    #[test]
+    fn assign_ops() {
+        let mut a = Mint::new(10);
+        a += Mint::new(3);
+        assert_eq!(a.value(), 13);
+        a -= Mint::new(20);
+        assert_eq!(a.value(), P - 7);
+        a *= Mint::new(0);
+        assert_eq!(a.value(), 0);
+        let mut b = Mint::new(12);
+        b /= Mint::new(4);
+        assert_eq!(b.value(), 3);
+    }
+
+    #[test]
+    fn value_and_reference_operands_agree() {
+        let (a, b) = (Mint::new(10), Mint::new(3));
+        // 値 o 値 / 値 o 参照 / 参照 o 値 / 参照 o 参照 の4通りが一致すること
+        for [x, y, z, w] in [
+            [a + b, a + &b, &a + b, &a + &b],
+            [a - b, a - &b, &a - b, &a - &b],
+            [a * b, a * &b, &a * b, &a * &b],
+            [a / b, a / &b, &a / b, &a / &b],
+        ] {
+            assert_eq!(x.value(), y.value());
+            assert_eq!(x.value(), z.value());
+            assert_eq!(x.value(), w.value());
+        }
+        // o= も右辺に参照を取れること
+        let mut c = a;
+        c += &b;
+        assert_eq!(c.value(), (a + b).value());
+        let mut c = a;
+        c -= &b;
+        assert_eq!(c.value(), (a - b).value());
+        let mut c = a;
+        c *= &b;
+        assert_eq!(c.value(), (a * b).value());
+        let mut c = a;
+        c /= &b;
+        assert_eq!(c.value(), (a / b).value());
+    }
+
+    #[test]
+    fn negation() {
+        assert_eq!((-Mint::zero()).value(), 0);
+        assert_eq!((-Mint::one()).value(), P - 1);
+        let a = Mint::new(12345);
+        assert_eq!((a + -a).value(), 0);
+        assert_eq!((-(-a)).value(), a.value());
+    }
+
+    #[test]
+    fn pow_basics() {
+        assert_eq!(Mint::new(2).pow(0).value(), 1);
+        assert_eq!(Mint::new(2).pow(1).value(), 2);
+        assert_eq!(Mint::new(2).pow(10).value(), 1024);
+        assert_eq!(Mint::zero().pow(0).value(), 1);
+        assert_eq!(Mint::zero().pow(5).value(), 0);
+        // 指数が u64 の広い範囲でも有限回で止まること（x >>= 1 の回帰テスト）
+        assert_eq!(Mint::new(3).pow(12_345_678_901_234).value(), 220_965_188);
+    }
+
+    #[test]
+    fn pow_matches_fermat() {
+        // P は素数なので a^(P-1) = 1
+        for a in [2u32, 3, 5, 1234, P - 1] {
+            assert_eq!(Mint::new(a).pow((P - 1) as u64).value(), 1);
+        }
+    }
+
+    #[test]
+    fn inv_roundtrip() {
+        for a in [1u32, 2, 3, 1234, P - 1] {
+            let a = Mint::new(a);
+            assert_eq!((a * a.inv()).value(), 1);
+            // P が素数なら逆元はフェルマーの小定理でも求まる
+            assert_eq!(a.inv().value(), a.pow((P - 2) as u64).value());
+        }
+        assert_eq!(Mint::new(2).inv().value(), 499_122_177);
+    }
+
+    #[test]
+    #[should_panic(expected = "not invertible")]
+    fn inv_of_zero_panics() {
+        let _ = Mint::zero().inv();
+    }
+
+    #[test]
+    #[should_panic(expected = "not invertible")]
+    fn inv_panics_when_not_coprime() {
+        // 法が合成数のとき、法と互いに素でない値には逆元がない
+        let _ = ModInt::<10>::new(2).inv();
+    }
+
+    #[test]
+    fn inv_works_for_composite_mod_when_coprime() {
+        let a = ModInt::<10>::new(3);
+        assert_eq!((a * a.inv()).value(), 1);
+    }
+
+    #[test]
+    fn sum_and_product() {
+        let v = vec![Mint::new(3), Mint::new(4), Mint::new(5)];
+        assert_eq!(v.iter().sum::<Mint>().value(), 12);
+        assert_eq!(v.iter().product::<Mint>().value(), 60);
+        assert_eq!(v.clone().into_iter().sum::<Mint>().value(), 12);
+        assert_eq!(v.into_iter().product::<Mint>().value(), 60);
+        // 空列では単位元が返ること
+        let e: Vec<Mint> = Vec::new();
+        assert_eq!(e.iter().sum::<Mint>().value(), 0);
+        assert_eq!(e.iter().product::<Mint>().value(), 1);
+        // 総和・総積も MOD で畳まれること
+        let big = vec![Mint::new(P - 1); 3];
+        assert_eq!(big.iter().sum::<Mint>().value(), P - 3);
+        assert_eq!(big.iter().product::<Mint>().value(), P - 1);
+    }
+
+    #[test]
+    fn derives_eq_ord_hash() {
+        assert!(Mint::new(P + 5) == Mint::new(5));
+        assert!(Mint::new(1) < Mint::new(2));
+        let set: HashSet<Mint> = [Mint::new(5), Mint::new(P + 5)].into_iter().collect();
+        assert_eq!(set.len(), 1);
+        let set: BTreeSet<Mint> = [Mint::new(5), Mint::new(P + 5)].into_iter().collect();
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn mod_close_to_2_pow_31_does_not_overflow() {
+        // 加算は u32 のまま行うので、2*(MOD-1) が u32 に収まる MOD <= 2^31 が上限。
+        // 使える最大クラスの法として 2^31-1（メルセンヌ素数）で確認する。
+        const Q: u32 = 2_147_483_647;
+        type Big = ModInt<2_147_483_647>;
+        assert_eq!((Big::new(Q - 1) + Big::new(Q - 1)).value(), Q - 2);
+        assert_eq!((Big::zero() - Big::new(Q - 1)).value(), 1);
+        assert_eq!((Big::new(Q - 1) * Big::new(Q - 1)).value(), 1);
+        let a = Big::new(123_456_789);
+        assert_eq!((a * a.inv()).value(), 1);
     }
 }
