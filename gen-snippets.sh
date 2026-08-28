@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
-# cplib の #[snippet] 注釈を抽出し、Neovim(neosnippet) 用スニペットを生成する。
+# cplib の #[snippet] 注釈を抽出し、VSCode 形式のスニペットを生成する。
 #
-# 使い方: src/ のスニペットを編集したら本スクリプトを実行して snippets/ を更新する。
-#   ./gen-snippets.sh
+# 使い方: src/ のスニペットを編集したら、出力先を指定して実行する。
+#   ./gen-snippets.sh ~/.config/nvim/snippets/rust.json
 #
-# neosnippet.vim ならこの snippets/ ディレクトリを g:neosnippet#snippets_directory に、
-# LuaSnip(from_vscode) 派は下部のコメントの vscode 形式を使う。
+# VSCode 形式は LuaSnip(from_vscode) / blink.cmp / VSCode 本体が読める。出力先は
+# エディタ側の設定で決まるものなので、このスクリプトは既定値を持たない。
 set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "usage: $(basename "$0") <出力先の .json パス>" >&2
+    echo "  例: $(basename "$0") ~/.config/nvim/snippets/rust.json" >&2
+    exit 1
+fi
+
+# 相対パスは呼び出し元のカレントディレクトリ基準で解決してから cd する
+out=$1
+case "$out" in
+    /*) ;;
+    *) out="$PWD/$out" ;;
+esac
+
 cd "$(dirname "$0")"
-mkdir -p snippets
-
-cargo snippet -t neosnippet > snippets/cplib.snip
-echo "wrote snippets/cplib.snip (neosnippet)"
-
-# LuaSnip の from_vscode ローダや VSCode 本体を使う場合はこちらも生成する:
-# cargo snippet -t vscode > snippets/cplib.code-snippets
+mkdir -p "$(dirname "$out")"
+cargo snippet -t vscode > "$out"
+echo "wrote $out (vscode)"

@@ -3,7 +3,7 @@
 競技プログラミング用の自作ライブラリ（Rust）。AtCoder の現行環境（2025-10 / rustc 1.89.0, edition 2024）を
 想定しています。
 
-[cargo-snippet](https://github.com/hatoo/cargo-snippet) ベースのスニペット集として運用します（下記「スニペット運用」）。現在のモジュール: `rust_out`（高速出力）。
+[cargo-snippet](https://github.com/hatoo/cargo-snippet) ベースのスニペット集として運用します（下記「スニペット運用」）。現在のモジュール: `modint`（剰余体）。
 
 ## 解答テンプレート
 
@@ -45,19 +45,20 @@ pub fn foo() { /* ... */ }
 ```bash
 cargo install cargo-snippet --features binaries   # 初回のみ
 rustup component add rustfmt                       # 出力整形に必要
-./gen-snippets.sh                                  # src/ → snippets/cplib.snip
+./gen-snippets.sh ~/.config/nvim/snippets/rust.json   # src/ → VSCode 形式スニペット
 ```
 
-### Neovim で使う（neosnippet）
+出力先はエディタ側の設定で決まるので、スクリプトは既定値を持たず引数で受け取ります。
 
-`snippets/cplib.snip` を neosnippet の探索パスに含めます:
+### エディタで使う
 
-```vim
-let g:neosnippet#snippets_directory = expand('~/path/to/cplib/snippets')
-```
+出力は VSCode 形式のみです（LuaSnip の `from_vscode`、blink.cmp、VSCode 本体が読める形式）。
 
-挿入モードでスニペット名（例 `rust_out`）を打ち、展開キー（既定 `<C-k>`）で本体が挿入されます。
-LuaSnip 派は `cargo snippet -t vscode`（`gen-snippets.sh` のコメント参照）を生成し `from_vscode` で読み込めます。
+LazyVim なら `~/.config/nvim/snippets/<filetype>.json` がそのまま読まれるので、Rust 用は
+`~/.config/nvim/snippets/rust.json` を出力先に指定します。挿入モードでスニペット名
+（例 `modint`）を打つと候補に出ます。
+
+エディタが別のパスを見ているなら、そのパスを引数に渡すだけで済みます。
 
 ### 提出
 
