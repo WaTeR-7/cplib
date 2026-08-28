@@ -129,6 +129,14 @@ mod my_template_modint {
     // マクロを使った i128, u128 の RemEuclidU32 の実装
     impl_rem_euclid_128!(i128, u128);
 
+    /// 整数型から ModInt への変換
+    impl<const MOD: u32, T: RemEuclidU32> From<T> for ModInt<MOD> {
+        #[inline]
+        fn from(v: T) -> Self {
+            Self::new(v)
+        }
+    }
+
     /// ModInt += ModInt の実装
     impl<const MOD: u32> AddAssign for ModInt<MOD> {
         #[inline]
@@ -236,6 +244,36 @@ mod my_template_modint {
     }
     // マクロを使った、値 / 参照 それぞれの四則演算子の実装
     impl_binop! {
+        Add, add, AddAssign, add_assign;
+        Sub, sub, SubAssign, sub_assign;
+        Mul, mul, MulAssign, mul_assign;
+        Div, div, DivAssign, div_assign;
+    }
+
+    /// 右辺に生の整数を取る四則演算子を *_assign から実装するマクロ
+    /// 逆順（整数 o ModInt）は孤児則で書けないので右辺のみ
+    macro_rules! impl_binop_int {
+        ($($tr:ident, $tr_f:ident, $tr_asn:ident, $tr_asn_f:ident;)*) => {$(
+            /// ModInt o 整数 の実装
+            impl<const MOD: u32, T: RemEuclidU32> $tr<T> for ModInt<MOD> {
+                type Output = Self;
+                #[inline]
+                fn $tr_f(self, rhs: T) -> Self {
+                    $tr::$tr_f(self, Self::new(rhs))
+                }
+            }
+
+            /// ModInt o= 整数 の実装
+            impl<const MOD: u32, T: RemEuclidU32> $tr_asn<T> for ModInt<MOD> {
+                #[inline]
+                fn $tr_asn_f(&mut self, rhs: T) {
+                    $tr_asn::$tr_asn_f(self, Self::new(rhs));
+                }
+            }
+        )*};
+    }
+    // マクロを使った、右辺に生の整数を取る四則演算子の実装
+    impl_binop_int! {
         Add, add, AddAssign, add_assign;
         Sub, sub, SubAssign, sub_assign;
         Mul, mul, MulAssign, mul_assign;
@@ -350,6 +388,51 @@ mod tests {
         let mut b = Mint::new(12);
         b /= Mint::new(4);
         assert_eq!(b.value(), 3);
+    }
+
+    #[test]
+    fn raw_int_operands() {
+        let a = Mint::new(10);
+        assert_eq!((a + 1).value(), 11);
+        assert_eq!((a - 1).value(), 9);
+        assert_eq!((a * 2).value(), 20);
+        assert_eq!((a / 2).value(), 5);
+        // 右辺は ModInt 版と同じ結果になること
+        assert_eq!(a + 3, a + Mint::new(3));
+        assert_eq!(a - 3, a - Mint::new(3));
+        assert_eq!(a * 3, a * Mint::new(3));
+        assert_eq!(a / 3, a / Mint::new(3));
+        // 型を問わず、負数や MOD 以上の値も new と同じく正規化されること
+        assert_eq!((a + -1i64).value(), 9);
+        assert_eq!((a - -1i32).value(), 11);
+        assert_eq!((a * 3usize).value(), 30);
+        assert_eq!(a + P, a);
+        assert_eq!((Mint::zero() + u64::MAX).value(), 932_051_909);
+    }
+
+    #[test]
+    fn raw_int_assign_ops() {
+        let mut c = Mint::new(10);
+        c += 1;
+        c *= 7usize;
+        c -= -1i64;
+        c /= 2u8;
+        assert_eq!(c.value(), 39);
+    }
+
+    #[test]
+    fn from_int() {
+        let a: Mint = 5u32.into();
+        assert_eq!(a, Mint::new(5));
+        assert_eq!(Mint::from(-1i64), Mint::new(-1i64));
+        assert_eq!(Mint::from(P), Mint::zero());
+    }
+
+    #[test]
+    fn factorial_by_fold() {
+        // 生の整数を右辺に取れると階乗がそのまま畳める
+        let f = (1..=10u64).fold(Mint::one(), |acc, i| acc * i);
+        assert_eq!(f.value(), 3_628_800);
     }
 
     #[test]
