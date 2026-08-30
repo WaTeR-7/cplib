@@ -929,7 +929,23 @@ use my_template_rust_out::*;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque};
 
+// 深い再帰でも落ちないよう、大きめのスタックを確保したスレッドで解く。
+// 木やグラフの DFS は深さが N に比例しうるが、main スレッドの既定は 8MB しかない。
+// スタックのページは使うまで確保されないので、深くならない問題でも実質ノーコスト。
 fn main() {
+    let handle = std::thread::Builder::new()
+        // panic メッセージを素の main と同じ `thread 'main' panicked at ...` に保つ
+        .name("main".into())
+        .stack_size(256 * 1024 * 1024)
+        .spawn(solve)
+        .unwrap();
+    if handle.join().is_err() {
+        // solve 内の panic は既に表示済み。二重に出さず終了コードだけ合わせる
+        std::process::exit(101);
+    }
+}
+
+fn solve() {
     let mut rin = RustIn::new();
     let mut rout = RustOut::new();
 }
