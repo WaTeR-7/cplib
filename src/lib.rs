@@ -4,4 +4,5 @@
 //! 抽出単位を宣言する。`cargo test` で原本を検証し、`cargo snippet` でエディタ用
 //! スニペット（VSCode / Neosnippet / UltiSnips）を書き出してコピペ／展開に使う。
 
+pub mod dfs;
 pub mod modint;
