@@ -3,7 +3,14 @@
 競技プログラミング用の自作ライブラリ（Rust）。AtCoder の現行環境（2025-10 / rustc 1.89.0, edition 2024）を
 想定しています。
 
-[cargo-snippet](https://github.com/hatoo/cargo-snippet) ベースのスニペット集として運用します（下記「スニペット運用」）。現在のモジュール: `modint`（剰余体）、`dfs`（再帰 DFS の雛形。貼ってから問題に合わせて書き換える）。
+[cargo-snippet](https://github.com/hatoo/cargo-snippet) ベースのスニペット集として運用します（下記「スニペット運用」）。
+
+## モジュール一覧
+
+名前はファイル名（`src/<name>.rs`）とスニペット名を兼ねます。
+
+- `modint`: コンパイル時定数を法とする剰余体 `ModInt<MOD>`。
+- `dfs`: 再帰 DFS の雛形。貼ってから問題に合わせて書き換える。
 
 ## 解答テンプレート
 
