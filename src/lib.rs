@@ -5,4 +5,5 @@
 //! スニペット（VSCode / Neosnippet / UltiSnips）を書き出してコピペ／展開に使う。
 
 pub mod dfs;
+pub mod intline;
 pub mod modint;
