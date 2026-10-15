@@ -1,3 +1,4 @@
+// ライブラリの公開先: https://github.com/WaTeR-7/cplib
 #![allow(unused_imports, dead_code, unused_variables, unused_mut, unused_macros)]
 
 mod my_template_consts {
